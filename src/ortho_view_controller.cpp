@@ -123,11 +123,7 @@ void OrthoViewController::handleMouseEvent(rviz_common::ViewportMouseEvent &e) {
 
     if (rotate_z) {
       const auto plane = getPlane();
-      if (plane == PLANE_NONE) {
-        rotate(0.005 * dx, Ogre::Vector3::UNIT_Z);
-      } else {
-        rotate(0.005 * dx, planeNormal(plane));
-      }
+      rotate(0.005 * dx, planeNormal(plane));
     } else {
       const auto orientation = orientation_property_->getQuaternion();
       rotate(-0.005 * dx, orientation * Ogre::Vector3::UNIT_Y);
