@@ -38,6 +38,8 @@ private slots:
 private:
   enum Plane { PLANE_NONE = 0, PLANE_XY, PLANE_XZ, PLANE_YZ };
 
+  static Ogre::Vector3 planeNormal(Plane plane);
+
   /// Gets the plane this view controller is currently locked to.
   Plane getPlane() const;
 

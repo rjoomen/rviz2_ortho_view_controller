@@ -18,8 +18,6 @@
 #include <rviz_rendering/objects/shape.hpp>
 #include <rviz_rendering/orthographic.hpp>
 
-// #include <ros/console.h>
-
 namespace ortho_view_controller {
 static const double VIEW_DISTANCE = 500.0;
 static const double DEFAULT_SCALE = 100.0;
@@ -31,6 +29,20 @@ static const char *STATUS =
 static const char *STATUS_SHIFT =
     "<b>Left-Click:</b> Rotate R.  <b>Middle-Click:</b> Move XY.  "
     "<b>Right-Click:</b> Move Z.  <b>Mouse Wheel:</b> Zoom.";
+
+Ogre::Vector3 OrthoViewController::planeNormal(Plane plane) {
+  switch (plane) {
+  case PLANE_XY:
+    return Ogre::Vector3::UNIT_Z;
+  case PLANE_XZ:
+    return Ogre::Vector3::UNIT_Y;
+  case PLANE_YZ:
+    return Ogre::Vector3::UNIT_X;
+  case PLANE_NONE:
+  default:
+    return Ogre::Vector3::UNIT_Z;
+  }
+}
 
 OrthoViewController::OrthoViewController()
     : plane_property_(new rviz_common::properties::EnumProperty(
@@ -47,7 +59,8 @@ OrthoViewController::OrthoViewController()
   plane_property_->addOption("XZ", PLANE_XZ);
   plane_property_->addOption("YZ", PLANE_YZ);
 
-  // connect(plane_property_, SIGNAL(changed()), this, SLOT(onPlaneChanged()));
+  connect(plane_property_.get(), &rviz_common::properties::Property::changed,
+          this, &OrthoViewController::onPlaneChanged);
 }
 
 OrthoViewController::~OrthoViewController() {}
@@ -64,6 +77,8 @@ void OrthoViewController::onInitialize() {
   centre_shape_->setScale(Ogre::Vector3(0.05f, 0.05f, 0.01f));
   centre_shape_->setColor(1.0f, 1.0f, 0.0f, 0.5f);
   centre_shape_->getRootNode()->setVisible(false);
+
+  onPlaneChanged();
 }
 
 void OrthoViewController::handleMouseEvent(rviz_common::ViewportMouseEvent &e) {
@@ -97,7 +112,7 @@ void OrthoViewController::handleMouseEvent(rviz_common::ViewportMouseEvent &e) {
     const auto &orientation = orientation_property_->getQuaternion();
 
     Ogre::Quaternion q;
-    q.FromAngleAxis(Ogre::Radian(angle), orientation * axis);
+    q.FromAngleAxis(Ogre::Radian(angle), axis);
     q.normalise();
 
     orientation_property_->setQuaternion(q * orientation);
@@ -107,10 +122,16 @@ void OrthoViewController::handleMouseEvent(rviz_common::ViewportMouseEvent &e) {
     setCursor(rotate_cursor);
 
     if (rotate_z) {
-      rotate(0.005 * dx, Ogre::Vector3::UNIT_Z);
+      const auto plane = getPlane();
+      if (plane == PLANE_NONE) {
+        rotate(0.005 * dx, Ogre::Vector3::UNIT_Z);
+      } else {
+        rotate(0.005 * dx, planeNormal(plane));
+      }
     } else {
-      rotate(-0.005 * dx, Ogre::Vector3::UNIT_Y);
-      rotate(-0.005 * dy, Ogre::Vector3::UNIT_X);
+      const auto orientation = orientation_property_->getQuaternion();
+      rotate(-0.005 * dx, orientation * Ogre::Vector3::UNIT_Y);
+      rotate(-0.005 * dy, orientation * Ogre::Vector3::UNIT_X);
     }
   } else if (e.middle() || (e.left() && e.shift())) {
     setCursor(MoveXY);
@@ -122,7 +143,7 @@ void OrthoViewController::handleMouseEvent(rviz_common::ViewportMouseEvent &e) {
     centre_property_->add(movement);
   } else if (e.right() && !e.shift()) {
     setCursor(Zoom);
-    scale_property_->multiply(1 - 0.01 * dy);
+    scale_property_->multiply(1.0f - 0.01f * static_cast<float>(dy));
   } else if (e.right() && e.shift()) {
     setCursor(MoveZ);
 
@@ -137,7 +158,8 @@ void OrthoViewController::handleMouseEvent(rviz_common::ViewportMouseEvent &e) {
 
   if (e.wheel_delta) {
     moved = true;
-    scale_property_->multiply(1 + 0.001 * e.wheel_delta);
+    scale_property_->multiply(1.0f +
+                              0.001f * static_cast<float>(e.wheel_delta));
   }
 
   if (moved) {
@@ -155,6 +177,8 @@ void OrthoViewController::reset() {
   centre_property_->setVector(Ogre::Vector3::ZERO);
   orientation_property_->setQuaternion(Ogre::Quaternion::IDENTITY);
   scale_property_->setFloat(DEFAULT_SCALE);
+
+  onPlaneChanged();
 }
 
 void OrthoViewController::mimic(rviz_common::ViewController *source) {
@@ -206,14 +230,21 @@ void OrthoViewController::onPlaneChanged() {
   orientation_property_->setHidden(locked);
 
   if (locked) {
-    auto orientation = Ogre::Quaternion::IDENTITY;
+    // Choose a stable "screen up" for each plane.
+    Ogre::Vector3 desired_up = Ogre::Vector3::UNIT_Z;
+    if (plane == PLANE_XY) {
+      desired_up = Ogre::Vector3::UNIT_Y;
+    }
 
-    // TODO(lucasw) fix XZ and YZ planes.
-    if (plane == PLANE_XZ)
-      orientation.FromAngleAxis(Ogre::Radian(M_PI / 2), Ogre::Vector3::UNIT_X);
-    else if (plane == PLANE_YZ)
-      orientation.FromAngleAxis(Ogre::Radian(M_PI / 2), Ogre::Vector3::UNIT_Y);
+    const Ogre::Vector3 z_axis = planeNormal(plane);
+    // Orthonormalize desired_up against z_axis.
+    Ogre::Vector3 y_axis =
+        (desired_up - z_axis * desired_up.dotProduct(z_axis)).normalisedCopy();
+    Ogre::Vector3 x_axis = y_axis.crossProduct(z_axis).normalisedCopy();
 
+    Ogre::Quaternion orientation;
+    orientation.FromAxes(x_axis, y_axis, z_axis);
+    orientation.normalise();
     orientation_property_->setQuaternion(orientation);
   }
 }
