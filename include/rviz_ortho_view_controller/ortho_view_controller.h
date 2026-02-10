@@ -43,6 +43,8 @@ private:
   /// Gets the plane this view controller is currently locked to.
   Plane getPlane() const;
 
+  Ogre::SceneNode *getCameraParent(Ogre::Camera *camera);
+
   std::unique_ptr<rviz_common::properties::EnumProperty> plane_property_;
   std::unique_ptr<rviz_common::properties::VectorProperty> centre_property_;
   std::unique_ptr<rviz_common::properties::QuaternionProperty>

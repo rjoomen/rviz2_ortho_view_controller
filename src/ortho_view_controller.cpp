@@ -191,7 +191,8 @@ void OrthoViewController::mimic(rviz_common::ViewController *source) {
         source_ortho->orientation_property_->getQuaternion());
     scale_property_->setFloat(source_ortho->scale_property_->getFloat());
   } else {
-    centre_property_->setVector(source->getCamera()->getPosition());
+    const auto camera_parent = getCameraParent(camera_);
+    centre_property_->setVector(camera_parent->getPosition());
   }
 }
 
@@ -215,9 +216,10 @@ void OrthoViewController::update(float dt, float ros_dt) {
   auto centre = centre_property_->getVector();
   auto orientation = orientation_property_->getQuaternion();
 
-  camera_->setOrientation(orientation);
-  camera_->setPosition(centre +
-                       orientation * Ogre::Vector3::UNIT_Z * VIEW_DISTANCE);
+  const auto camera_parent = getCameraParent(camera_);
+  camera_parent->setOrientation(orientation);
+  camera_parent->setPosition(centre + orientation * Ogre::Vector3::UNIT_Z *
+                                          VIEW_DISTANCE);
 
   centre_shape_->setPosition(centre);
 }
@@ -252,6 +254,17 @@ void OrthoViewController::onPlaneChanged() {
 OrthoViewController::Plane OrthoViewController::getPlane() const {
   return static_cast<Plane>(plane_property_->getOptionInt());
 }
+
+Ogre::SceneNode *OrthoViewController::getCameraParent(Ogre::Camera *camera) {
+  auto camera_parent = camera->getParentSceneNode();
+
+  if (!camera_parent) {
+    throw std::runtime_error(
+        "camera's parent scene node pointer unexpectedly nullptr");
+  }
+  return camera_parent;
+}
+
 } // namespace ortho_view_controller
 
 PLUGINLIB_EXPORT_CLASS(ortho_view_controller::OrthoViewController,
